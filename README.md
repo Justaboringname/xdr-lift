@@ -1,5 +1,9 @@
 # XDRLift
 
+*[中文说明](README.zh.md)*
+
+_Last updated: 2026-10-25_
+
 Keeps an Apple XDR display (built for the 2026 Studio Display XDR) above Apple's indoor SDR
 brightness cap with a fixed multiplier, while the native brightness slider in Control Center and
 the keyboard keeps controlling it.
@@ -51,3 +55,7 @@ defaults write com.justaboringname.xdrlift trace -bool true   # 50 ms state trac
 - A first version used a full-screen `multiply` overlay instead. WindowServer does not composite
   overlays during the Space-switch animation, so the screen dipped for about a second on every
   Ctrl+←/→; it also left the pointer unboosted and leaked into screenshots.
+
+## License
+
+MIT
