@@ -44,7 +44,7 @@ defaults write com.justaboringname.xdrlift trace -bool true   # 50 ms state trac
 
 ## Caveats
 
-- HDR content pauses the boost. Any table this process holds — even an identity one — caps EDR
+- HDR content pauses the boost. Any table this process holds — even an identity one — appears to cap EDR
   content at SDR white, so HDR video looked like SDR while XDRLift ran. Now, when other content
   asks for more headroom than the trigger's 2.0× (HDR video, HDR photos), the boost fades out and
   the table is handed back to the system; the boost returns ~15 s after the HDR content is gone
