@@ -11,9 +11,13 @@ $(APP): $(SWIFT_SRC) app/Info.plist
 	codesign --force --sign - $(APP)
 	touch $(APP)
 
-# Boosts the XDR screen, pulses 1.0x <-> 1.4x every 2 s for 12 s, logs headroom / frame health, exits.
+# Boosts the XDR screen, pulses 1.0x <-> 1.4x every 2 s for 12 s, logs headroom / table, exits.
+# Quits the menu bar instance for the run (two would fight over the gamma table) and reopens it.
 selftest: $(APP)
-	perl -e 'alarm shift; exec @ARGV' 20 $(APP)/Contents/MacOS/XDRLift --selftest 12
+	@was=$$(pgrep -x XDRLift); pkill -x XDRLift; \
+	 for i in $$(seq 50); do pgrep -x XDRLift >/dev/null || break; sleep 0.1; done; \
+	 perl -e 'alarm shift; exec @ARGV' 20 $(APP)/Contents/MacOS/XDRLift --selftest 12; \
+	 if [ -n "$$was" ]; then open /Applications/XDRLift.app; fi
 
 install: $(APP)
 	-pkill -x XDRLift
