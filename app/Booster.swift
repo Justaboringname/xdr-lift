@@ -62,6 +62,8 @@ struct GammaTable {
 
 @MainActor
 final class Booster {
+    private static var all = NSHashTable<Booster>.weakObjects()
+
     let id: CGDirectDisplayID
     let uuid: String
     let name: String
@@ -86,6 +88,9 @@ final class Booster {
     /// nothing until it has been left alone for 30 s.
     private(set) var conflict = false
 
+    /// Headroom the trigger asks for. Enough for the 1.6× slider maximum (0.95 · 2.0), and the
+    /// yardstick for HDR detection: macOS grants exactly this, so a higher H means HDR content.
+    static let triggerHeadroom = 2.0
     static let fadeDuration = 0.4
     static let upwardDelay = 1.5
     static let hdrReady = 1.05
@@ -100,8 +105,8 @@ final class Booster {
         name = screen.localizedName
         self.userK = userK
         base = Self.cleanBase(id)
-        triggerView = ClearView(frame: NSRect(x: 0, y: 0, width: 1, height: 1))
-        // A near-invisible pixel is enough to make macOS open up headroom (H 1.0 → 3.33 in 0.25 s).
+        triggerView = ClearView(frame: NSRect(x: 0, y: 0, width: 1, height: 1), headroom: Self.triggerHeadroom)
+        // A near-invisible pixel is enough to make macOS open up headroom (H 1.0 → 2.0 in 0.25 s).
         triggerView.setColor(0.016, alpha: 0.01)
         let w = NSWindow(contentRect: Self.triggerFrame(screen), styleMask: [.borderless], backing: .buffered, defer: false)
         w.level = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()) + 1)
@@ -117,6 +122,7 @@ final class Booster {
         w.sharingType = .none
         w.contentView = triggerView
         trigger = w
+        Self.all.add(self)
     }
 
     /// The current table, unless it already looks boosted (left by another tool), in which case
@@ -137,12 +143,40 @@ final class Booster {
 
     private func encoded(_ k: Double) -> CGGammaValue { CGGammaValue(pow(k, 1 / Self.encodingGamma)) }
 
+    /// Writes base × k. At k = 1 the table is handed back to the system instead of written: any
+    /// table this process holds, even an identity one, caps EDR content at SDR white, so HDR video
+    /// would look like SDR (seen with Bilibili HDR in Safari until XDRLift was quit).
     private func writeTable(_ k: Double) {
         guard !conflict else { return }
-        let t = k <= 1.0001 ? base : base.scaled(by: encoded(k))
+        if k <= 1.0001 {
+            releaseTable()
+            return
+        }
+        let t = base.scaled(by: encoded(k))
         let e = t.write(id)
         if e == .success { lastWritten = t } else { log("display \(id): CGSetDisplayTransferByTable failed (\(e.rawValue))") }
     }
+
+    /// Restores this process's tables to the ColorSync profile, which drops its override. The call
+    /// covers every display, so it waits until no display of this app is boosted; until then the
+    /// plain base is written instead.
+    private func releaseTable() {
+        if Self.all.allObjects.contains(where: { $0 !== self && ($0.applied > 1.0001 || $0.fading) }) {
+            if base.write(id) == .success { lastWritten = base }
+            return
+        }
+        CGDisplayRestoreColorSyncSettings()
+        for b in Self.all.allObjects {
+            if let live = GammaTable.read(b.id) {
+                b.lastWritten = live
+                if live.plain { b.base = live }
+            }
+        }
+    }
+
+    /// Other content on this display asked for more headroom than the trigger: HDR video or
+    /// photos. The gamma boost would clip it, so the boost steps aside while it is on screen.
+    var hdrOnScreen: Bool { shown && headroom > Self.triggerHeadroom + 0.05 }
 
     func show() {
         guard !shown else { return }
@@ -202,7 +236,7 @@ final class Booster {
     /// The multiplier to apply now: the user's k, capped below the headroom, 1 without EDR.
     func target(off: Bool) -> Double {
         let h = headroom
-        guard !off, shown, !conflict, h > Self.hdrReady else { return 1 }
+        guard !off, shown, !conflict, h > Self.hdrReady, !hdrOnScreen else { return 1 }
         return max(1, min(userK, 0.95 * h))
     }
 

@@ -432,6 +432,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if !enabled { title = "已关闭（⌃⌥⌘B 开关）" }
             else if suspended { title = "暂停中（\(suspendReasons.sorted().joined(separator: ", "))）" }
             else if b.conflict { title = "已让出（别的程序在改 gamma 表）" }
+            else if b.hdrOnScreen { title = "屏幕上有 HDR 内容，提亮已暂停" }
             else if h > Booster.hdrReady { title = String(format: "当前约 %.2f×  ·  EDR 余量 %.2f×", b.applied, h) }
             else { title = "等待 EDR 启动…" }
         } else {
@@ -504,8 +505,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 let now = CACurrentMediaTime()
                 let line = self.boosters.values.map { b -> String in
                     let h = b.health(now: now)
-                    return String(format: "id=%u H=%.3f applied=%.3f table=%.4f trVis=%d trStale=%d",
-                                  b.id, b.headroom, b.applied, b.tableLast, h.triggerVisible ? 1 : 0, h.triggerAge > 0.5 ? 1 : 0)
+                    return String(format: "id=%u H=%.3f hdr=%d applied=%.3f table=%.4f trVis=%d trStale=%d",
+                                  b.id, b.headroom, b.hdrOnScreen ? 1 : 0, b.applied, b.tableLast, h.triggerVisible ? 1 : 0, h.triggerAge > 0.5 ? 1 : 0)
                 }.joined(separator: " | ")
                 if line != last { log("trace " + line); last = line }
             }

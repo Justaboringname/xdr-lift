@@ -11,8 +11,8 @@ the keyboard keeps controlling it.
 macOS only opens the Studio Display XDR's 1000-nit SDR range when the ambient light sensor sees a
 bright room. XDRLift instead:
 
-1. shows a 1×1 near-transparent EDR window, which makes macOS switch the panel into EDR mode
-   (SDR white is rendered at 1.0 inside a larger range, headroom `H` — 3.33× at full brightness here);
+1. shows a 1×1 near-transparent EDR window that asks for 2.0× headroom, which makes macOS switch
+   the panel into EDR mode (SDR white is rendered at 1.0 inside a larger range, headroom `H`);
 2. scales the display's gamma (transfer) table above 1.0, by `k^(1/2.2)`, so SDR white is pushed
    into that headroom, to about `k ×` the native brightness.
 
@@ -44,7 +44,11 @@ defaults write com.justaboringname.xdrlift trace -bool true   # 50 ms state trac
 
 ## Caveats
 
-- HDR video is boosted too and clips earlier; toggle off with ⌃⌥⌘B for HDR content.
+- HDR content pauses the boost. Any table this process holds — even an identity one — caps EDR
+  content at SDR white, so HDR video looked like SDR while XDRLift ran. Now, when other content
+  asks for more headroom than the trigger's 2.0× (HDR video, HDR photos), the boost fades out and
+  the table is handed back to the system; the boost returns ~15 s after the HDR content is gone
+  (macOS lowers `H` slowly). Whenever the boost is at 1× the table is handed back too.
 - The table holds gamma-encoded values: alternating an EDR 1.4× white field with SDR white under
   table factors 1.10–1.46, the low end (≈ 1.4^(1/2.2) = 1.165) flickered least. Judged by eye, not
   measured; pick `k` by eye.

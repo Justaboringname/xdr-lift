@@ -10,7 +10,9 @@ final class ClearView: MTKView, MTKViewDelegate {
     /// CACurrentMediaTime() of the last frame the GPU finished; 0 until the first one.
     private(set) var lastFrame: CFTimeInterval = 0
 
-    init(frame: NSRect) {
+    /// `headroom`: the EDR headroom this view asks macOS for. The system grants exactly that (when
+    /// the panel can), so anything above it means other content wants more (HDR video, photos).
+    init(frame: NSRect, headroom: CGFloat) {
         super.init(frame: frame, device: Self.sharedDevice)
         wantsLayer = true
         colorPixelFormat = .rgba16Float
@@ -18,7 +20,14 @@ final class ClearView: MTKView, MTKViewDelegate {
         autoResizeDrawable = false
         drawableSize = CGSize(width: 1, height: 1)
         layer?.isOpaque = false
-        (layer as? CAMetalLayer)?.wantsExtendedDynamicRangeContent = true
+        if let l = layer as? CAMetalLayer {
+            if #available(macOS 26.0, *) {
+                l.preferredDynamicRange = .high
+            } else {
+                l.wantsExtendedDynamicRangeContent = true
+            }
+            l.contentsHeadroom = headroom
+        }
         clearColor = MTLClearColor(red: 1, green: 1, blue: 1, alpha: 1)
         delegate = self
         // No display-link loop: Booster presents a frame every 0.2 s with draw(), since EDR content
