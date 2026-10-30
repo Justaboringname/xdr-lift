@@ -72,7 +72,7 @@ final class Booster {
     var userK: Double
 
     private let triggerView: ClearView
-    private let trigger: NSWindow
+    private var trigger: NSWindow
     private var triggerTimer: Timer?
     private var base: GammaTable             // the plain table the boost is applied on top of
     private var lastWritten: GammaTable?     // exactly what this process last put in the table
@@ -82,6 +82,7 @@ final class Booster {
     private var fastUntil: CFTimeInterval = 0 // increases skip the stabilisation delay until then
     private(set) var shown = false
     private var lowSince: CFTimeInterval?     // headroom has been missing since
+    private var offSpaceSince: CFTimeInterval? // the trigger has been off the active Space since
     private var lastKick: CFTimeInterval = 0
     private var changes: [CFTimeInterval] = []  // times someone else changed the table
     /// Another app owns the table (it boosted it, or keeps changing it): stay at 1 and write
@@ -108,7 +109,12 @@ final class Booster {
         triggerView = ClearView(frame: NSRect(x: 0, y: 0, width: 1, height: 1), headroom: Self.triggerHeadroom)
         // A near-invisible pixel is enough to make macOS open up headroom (H 1.0 → 2.0 in 0.25 s).
         triggerView.setColor(0.016, alpha: 0.01)
-        let w = NSWindow(contentRect: Self.triggerFrame(screen), styleMask: [.borderless], backing: .buffered, defer: false)
+        trigger = Self.makeTrigger(screen, view: triggerView)
+        Self.all.add(self)
+    }
+
+    private static func makeTrigger(_ screen: NSScreen, view: NSView) -> NSWindow {
+        let w = NSWindow(contentRect: triggerFrame(screen), styleMask: [.borderless], backing: .buffered, defer: false)
         w.level = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()) + 1)
         w.collectionBehavior = [.stationary, .canJoinAllSpaces, .ignoresCycle, .canJoinAllApplications, .fullScreenAuxiliary]
         w.isOpaque = false
@@ -120,9 +126,8 @@ final class Booster {
         w.animationBehavior = .none
         w.isReleasedWhenClosed = false
         w.sharingType = .none
-        w.contentView = triggerView
-        trigger = w
-        Self.all.add(self)
+        w.contentView = view
+        return w
     }
 
     /// The current table, unless it already looks boosted (left by another tool), in which case
@@ -182,6 +187,7 @@ final class Booster {
         guard !shown else { return }
         shown = true
         lowSince = nil
+        offSpaceSince = nil
         refit()
         trigger.orderFrontRegardless()
         setTriggerRunning(true)
@@ -195,6 +201,7 @@ final class Booster {
         fade = nil
         upSince = nil
         lowSince = nil
+        offSpaceSince = nil
         applied = 1
         writeTable(1)
         setTriggerRunning(false)
@@ -310,6 +317,31 @@ final class Booster {
     func keepOnTop() {
         guard shown, !trigger.occlusionState.contains(.visible) else { return }
         trigger.orderFrontRegardless()
+    }
+
+    /// WindowServer can drop the trigger from a Space despite .canJoinAllSpaces (seen on a full-screen
+    /// Space, cause unknown). EDR then lapses 15 s after that Space opens, and neither ordering the
+    /// window in nor resetting its collectionBehavior puts it back; a new window joins every Space.
+    /// So after 1.5 s off the active Space the view moves to a new window, at most every 30 s.
+    /// Returns true when it did.
+    func watchSpace(off: Bool, now: CFTimeInterval = CACurrentMediaTime()) -> Bool {
+        guard shown, !off, !trigger.isOnActiveSpace, let s = screen else {
+            offSpaceSince = nil
+            return false
+        }
+        let since = offSpaceSince ?? now
+        offSpaceSince = since
+        guard now - since > 1.5, now - lastKick > 30 else { return false }
+        lastKick = now
+        offSpaceSince = nil
+        let old = trigger
+        trigger = Self.makeTrigger(s, view: triggerView)
+        trigger.orderFrontRegardless()
+        triggerView.draw()
+        old.orderOut(nil)
+        // Closed a beat later, not in the pass that built the new one (see hide()).
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { MainActor.assumeIsolated { old.close() } }
+        return true
     }
 
     /// If headroom has been missing for 5 s while the trigger is up and drawing, asks for EDR

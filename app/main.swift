@@ -144,6 +144,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard b.shown else { continue }
             b.setTriggerRunning(!suspended)
             if !off { b.keepOnTop() }
+            if b.watchSpace(off: off, now: now) { log("display \(id): trigger fell off the active Space, moved it to a new window") }
             if b.watchHeadroom(off: off, now: now) { log("display \(id): no EDR headroom for 5 s, re-raised the trigger") }
             b.update(off: off, now: now)
             if !enabled && !quitting && !b.fading && b.applied <= 1.0001 { b.hide() }
